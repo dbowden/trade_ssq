@@ -6,6 +6,7 @@ library(readxl)
 library(dplyr)
 library(tidyr)
 library(countrycode)
+library(zoo)
 
 
 # Load Owsiak settlement data (IBAD 1-0_05-2016) -----
@@ -23,7 +24,10 @@ settle$dyad <- as.numeric(ifelse(settle$ccode1 < settle$ccode2, paste(settle$cco
 frame <- settle %>% 
   filter(year==2001) %>% 
   group_by(dyad) %>% 
-  do(data.frame(dyad=.$dyad, year=as.numeric(seq(2002, 2014)), ccode1=.$ccode1, ccode2=.$ccode2))
+  do(data.frame(dyad=.$dyad, year=as.numeric(seq(2002, 2014)), ccode1=.$ccode1, ccode2=.$ccode2, settle=.$settle))
+
+# if settle status is 0 after 2001, reset to NA
+frame$settle[frame$settle==0] <- NA
   
 settle <- full_join(settle, frame) #23729
 
@@ -66,8 +70,6 @@ colnames(cinc) <- c("ccode2", "year", "cap2", "cincpop2")
 settle <- left_join(settle, cinc)
 
 rm(cinc)
-
-settle$agg_cincpop <- settle$cincpop1 + settle$cincpop2
 
 settle$caprat <- (settle$cap1/settle$cap2)
 
@@ -133,3 +135,77 @@ rm(pwt)
 # Combine and interpolate GDP -----
 
 settle$gdp1 <- ifelse(is.na(settle$pwt_gdp1), settle$madd_gdp1, settle$pwt_gdp1)
+settle$gdp2 <- ifelse(is.na(settle$pwt_gdp2), settle$madd_gdp2, settle$pwt_gdp2)
+settle$agg_gdp <- settle$gdp1 + settle$gdp2
+settle$agg_pop <- settle$cincpop1 + settle$cincpop2
+settle$agg_pop <- ifelse(!is.na(settle$agg_pop), settle$agg_pop, settle$madd_pop1 + settle$madd_pop2)
+
+#interpolate
+interp1 <- settle %>%
+  group_by(ccode1, year) %>%
+  summarize(gdp1=max(gdp1)) %>%
+  arrange(ccode1, year) %>%
+  group_by(ccode1) %>%
+  mutate(gdp1.int=na.approx(gdp1, maxgap=10, na.rm=F)) %>% 
+  select(-gdp1)
+
+interp2 <- settle %>% 
+  group_by(ccode2, year) %>% 
+  summarize(gdp2=max(gdp2)) %>% 
+  arrange(ccode2, year) %>% 
+  group_by(ccode2) %>% 
+  mutate(gdp2.int=na.approx(gdp2, maxgap=10, na.rm=F)) %>% 
+  select(-gdp2)
+
+settle <- left_join(settle, interp1)
+settle <- left_join(settle,interp2)
+rm(interp1, interp2)
+
+settle$agg_gdp_int <- ifelse(!is.na(settle$agg_gdp), settle$agg_gdp, settle$gdp1.int + settle$gdp2.int)
+
+
+# Polity ----
+
+polity <- read_excel("datasets/p4v2016.xls")
+
+polity <- select(polity, ccode1=ccode, year, polity2_1=polity2)
+
+settle <- left_join(settle, polity)
+
+polity <- rename(polity, ccode2=ccode1, polity2_2=polity2_1)
+
+settle <- left_join(settle, polity)
+
+rm(polity)
+
+settle$joint_dem <- ifelse(settle$polity2_1 >=6 & settle$polity2_2 >= 6, 1, 0)
+
+
+# Create settle variables -----
+
+settle <- settle %>% 
+  group_by(dyad) %>% 
+  arrange(year) %>% 
+  mutate(lag_settle=lag(settle))
+
+settle$new_settle <- ifelse(settle$lag_settle==0 & settle$settle==1, 1, 0)
+
+settle$settle_year <- ifelse(settle$new_settle==1, settle$year, NA)
+settle$settle_trade <- ifelse(settle$new_settle==1, settle$totflow, NA)
+settle$settle_transfer <- ifelse(settle$new_settle==1 & settle$terrchange==1, 1, 0)
+
+# fill down
+settle <- settle %>%
+  group_by(dyad) %>% 
+  fill(settle_year, settle_trade, settle_transfer)
+
+# windows
+settle$settle5 <- ifelse((settle$year - settle$settle_year) <= 5, 1, 0)
+# reset NA to 0 if settlement status is known
+settle$settle5[is.na(settle$settle5) & !is.na(settle$settle)] <- 0
+
+settle$settle10 <- ifelse((settle$year - settle$settle_year) <= 10, 1, 0)
+settle$settle10[is.na(settle$settle10) & !is.na(settle$settle)] <- 0
+
+settle$settle20 <- ifelse((settle$year - settle$settle_year) <= 20, 1, 0)
+settle$settle20[is.na(settle$settle20) & !is.na(settle$settle)] <- 0
