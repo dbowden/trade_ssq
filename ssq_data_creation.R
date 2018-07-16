@@ -181,12 +181,84 @@ rm(polity)
 settle$joint_dem <- ifelse(settle$polity2_1 >=6 & settle$polity2_2 >= 6, 1, 0)
 
 
+# PTA data --------
+
+# Desta 1.03
+pta <- read_csv("datasets/list_of_treaties_dyadic_01_03.csv")
+
+pta <- select(pta, country1:wto_name)
+
+pta$ccode1 <- countrycode(pta$iso1, "iso3n", "cown")
+pta$ccode1[pta$country1=="Serbia"] <- 345
+pta$ccode1[pta$country1=="Kosovo"] <- 347
+
+pta$ccode2 <- countrycode(pta$iso2, "iso3n", "cown")
+pta$ccode2[pta$country2=="Serbia"] <- 345
+pta$ccode2[pta$country2=="Kosovo"] <- 347
+
+pta$dyad <- as.numeric(ifelse(pta$ccode1 < pta$ccode2, paste(pta$ccode1, pta$ccode2, sep=""), paste(pta$ccode2, pta$ccode1, sep="")))
+
+# convert to yearly obs - make pta binary
+pta <- pta %>% 
+  group_by(dyad) %>% 
+  summarize(start=min(year))
+
+pta <- pta %>% 
+  rowwise() %>% 
+  do(data.frame(dyad=.$dyad, year=seq(.$start, 2014)))
+
+pta$pta <- 1
+
+pta$year <- as.numeric(pta$year)
+
+settle <- left_join(settle, pta)
+
+settle$pta[is.na(settle$pta)] <- 0
+
+rm(pta)
+
+#wto membership
+# wto <- read_csv("wto.csv", col_names = F)
+# 
+# wto$country <- gsub("\\s{2}.*$", "", wto$X1)
+# 
+# wto$year <- as.numeric(str_sub(wto$X1, -4, -1))
+# 
+# #fix one weird one
+# wto$year[wto$country=="Zaire"] <- 1971
+# wto$country[wto$country=="Zaire"] <- "Democratic Republic of the Congo"
+# 
+# wto$ccode1 <- countrycode(wto$country, "country.name", "cown")
+# 
+# #convert to yearly
+# 
+# wto <- wto %>% 
+#   rowwise() %>% 
+#   do(data.frame(ccode1=.$ccode1, year=seq(.$year, 2009)))
+# 
+# wto$wto1 <- 1
+# 
+# cont <- left_join(cont, wto)
+# 
+# wto <- rename(wto, ccode2 = ccode1, wto2 = wto1)
+# 
+# cont <- left_join(cont, wto)
+# 
+# rm(wto)
+# 
+# cont$wto1[is.na(cont$wto1)] <- 0
+# cont$wto2[is.na(cont$wto2)] <- 0
+# 
+# cont$both_wto <- ifelse(cont$wto1==1 & cont$wto2==1, 1, 0)
+# cont$wto_or_pta <- ifelse(cont$both_wto==1 | cont$pta==1, 1, 0)
+
+
 # Create settle variables -----
 
 settle <- settle %>% 
   group_by(dyad) %>% 
   arrange(year) %>% 
-  mutate(lag_settle=lag(settle))
+  mutate(lag_settle=dplyr::lag(settle))
 
 settle$new_settle <- ifelse(settle$lag_settle==0 & settle$settle==1, 1, 0)
 
@@ -197,15 +269,32 @@ settle$settle_transfer <- ifelse(settle$new_settle==1 & settle$terrchange==1, 1,
 # fill down
 settle <- settle %>%
   group_by(dyad) %>% 
-  fill(settle_year, settle_trade, settle_transfer)
+  fill(settle_year, settle_trade)
+
+settle <- settle %>% 
+  group_by(dyad) %>% 
+  mutate(settle_transfer=max(settle_transfer))
 
 # windows
 settle$settle5 <- ifelse((settle$year - settle$settle_year) <= 5, 1, 0)
 # reset NA to 0 if settlement status is known
 settle$settle5[is.na(settle$settle5) & !is.na(settle$settle)] <- 0
 
+
 settle$settle10 <- ifelse((settle$year - settle$settle_year) <= 10, 1, 0)
 settle$settle10[is.na(settle$settle10) & !is.na(settle$settle)] <- 0
 
 settle$settle20 <- ifelse((settle$year - settle$settle_year) <= 20, 1, 0)
 settle$settle20[is.na(settle$settle20) & !is.na(settle$settle)] <- 0
+
+settle$settle_transfer[is.na(settle$settle_transfer)] <- 0
+
+# settlement w/ transfer
+settle$settle_transfer5 <- ifelse((settle$year - settle$settle_year) <= 5 & settle$settle_transfer==1, 1, 0)
+settle$settle_transfer5[is.na(settle$settle_transfer5) & !is.na(settle$settle)] <- 0
+
+settle$settle_transfer10 <- ifelse((settle$year - settle$settle_year) <= 10 & settle$settle_transfer==1, 1, 0)
+settle$settle_transfer10[is.na(settle$settle_transfer10) & !is.na(settle$settle)] <- 0
+
+settle$settle_transfer20 <- ifelse((settle$year - settle$settle_year) <= 20 & settle$settle_transfer==1, 1, 0)
+settle$settle_transfer20[is.na(settle$settle_transfer20) & !is.na(settle$settle)] <- 0
