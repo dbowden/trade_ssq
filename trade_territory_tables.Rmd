@@ -7,11 +7,26 @@ output: html_document
 knitr::opts_chunk$set(echo = F, message = F, warning = F)
 ```
 
+## Summary
+
+1. Trade increases the likelihood that transfers will be legalized.
+2. Trade increases the probability that a peaceful settlement attempt will occur.
+3. Trade does not predict the termination of ICOW claims.
+4. Trade does not predict comprehensive border settlement.
+5. Border settlement predicts increased trade flows over 5, 10 and 20 year windows.
+6. Legalized transfers, all transfers, and ICOW claim termination predict decreased trade flows.
+7. Comprehensive border settlement partially mitigates the negative effects of ICOW claim termination.
+8. Comprehensive border settlement amplifies the negative effect of legalized transfers.
+
 ## The Legalization of Transfers
+
+- Cases: All state-to-state transfers (cases of independence, absporption, etc. removed), 1 obs per transfer
+- DV: whether transfer is legalized (our measure) or not
+- Model: logit
 
 Trade is positively related to the probability of agreement at the 95% level or higher in all but one model - the specification with area and population as the only controls, which has a substantially reduced n.
 
-```{r, cache=T}
+```{r, include=F, cache=T}
 source("agreement_dataprep.R")
 ```
 
@@ -40,7 +55,11 @@ htmlreg(list(a1,a2,a3,a4,a5,a6), caption = "Agreement Logits (Transfer as Unit o
 
 ## ICOW Settlement Attempts
 
-```{r, cache=T}
+- Universe: All ICOW claim-years, yearly observations, can have multiple claims per dyad
+- DV: At least 1 peaceful or bilateral settlement attempt in claim year
+- Model: logit with fixed effects for year and claim, standard errors clustered by dyad
+
+```{r, cache=T, message=FALSE, warning=FALSE}
 library(haven)
 library(readr)
 library(dplyr)
@@ -86,11 +105,10 @@ claim$lduration <- log(claim$duration + 1)
 claim$postww2 <- ifelse(claim$year > 1945, 1, 0)
 ```
 
-```{r, results='asis'}
+```{r, results='asis', message=FALSE, warning=F, comment=F, echo=F}
 library(pglm)
 source("extract_pglm.R")
-setMethod("extract", signature = className("maxLik", "maxLik"), 
-      definition = extract.pglm)
+invisible(setMethod("extract", signature = className("maxLik", "maxLik"), definition = extract.pglm))
 
 b1 <- pglm(attanyp ~ lag(log(totflow+1)), data=claim, index=c("claimdy","year"), model="pooling", effect="twoways", family=binomial("logit"))
 
@@ -109,7 +127,7 @@ claimmap <- list("(Intercept)"="(Intercept)", 'lag(log(totflow + 1))'="log Total
 htmlreg(list(b1,b2,b3,b4,b5,b6), doctype = F,  caption = "ICOW Settlement Attempt Logits (ICOW Claim-Year as Unit of Analysis)", custom.coef.map = claimmap, star.symbol = "\\*", , stars = c(0.001, 0.01, 0.05, 0.1), symbol = "&#8224;")
 ```
 
-Trade is robustly related to settlement attempts in ICOW claims. Substantively, a $1 million incresease in bilateral trade increases the probability of settlement attempt by about 7%. This is comparable to the effect of a 1 point increase on the ICOW salience scale.
+Trade is robustly related to settlement attempts in ICOW claims. Substantively, a $1 million increase in bilateral trade increases the probability of settlement attempt by about 7%. This is comparable to the effect of a 1 point increase on the ICOW salience scale.
 
 ## ICOW Claim Termination
 
@@ -187,8 +205,121 @@ Trade predicts border settlement, but only at the 90% level. This adds up to a c
 
 ## Trade as a DV
 
+```{r, include=F, cache=T}
+source("trade_dv_dataprep.R")
+```
 
+```{r, results="asis"}
+library(plm)
 
+t1 <- plm(log(totflow+1) ~ log(agg_gdp+1) + log(agg_pop+1) + joint_dem + lag(settle5), data=tradedv, index=c("dyad", "year"), model = "within", effect = "twoways")
+
+t2 <- plm(log(totflow+1) ~ lag(trans5) + log(agg_gdp+1) + log(agg_pop+1) + joint_dem, data=tradedv, index=c("dyad", "year"), model = "within", effect = "twoways")
+
+t3 <- plm(log(totflow+1) ~ lag(agree5) + log(agg_gdp+1) + log(agg_pop+1) + joint_dem, data=tradedv, index=c("dyad", "year"), model = "within", effect = "twoways")
+
+t4 <- plm(log(totflow+1) ~ lag(attanyp5) + log(agg_gdp+1) + log(agg_pop+1) + joint_dem, data=tradedv, index=c("dyad", "year"), model = "within", effect = "twoways")
+
+t5 <- plm(log(totflow+1) ~ lag(endicowclaim5) + log(agg_gdp+1) + log(agg_pop+1) + joint_dem, data=tradedv, index=c("dyad", "year"), model = "within", effect = "twoways")
+
+dvmap <- list("lag(settle5)"="Border Settlement within 5 Yrs", "lag(settle20)"="Border Settlement within 20 Yrs", "lag(trans5)"="Transfer within 5 Yrs", "lag(trans20)"="Transfer within 20 Yrs", "lag(agree5)"="Legalized Transfer within 5 Yrs", "lag(agree20)"="Legalized Transfer within 20 Yrs", "lag(attanyp5)"="ICOW Settlement Att within 5 Yrs", "lag(attanyp20)"="ICOW Settlement Att within 20 Yrs", "lag(endicowclaim5)"="ICOW Claim End within 5 Yrs", "lag(endicowclaim20)"="ICOW CLaim End within 20 Yrs","log(agg_gdp + 1)"="log Total GDP", "log(agg_pop + 1)"="log Total Population", "joint_dem"="Joint Democracy", "year2"="Year", "I(year2^2)"="Year<sup>2</sup>", "I(year2^3)"="Year<sup>3</sup>")
+
+htmlreg(list(t1,t2,t3,t4,t5), doctype = F, caption = "Fixed Effects Models of Trade Flows", star.symbol = "\\*", stars = c(0.001, 0.01, 0.05, 0.1), symbol = "&#8224;", custom.coef.map=dvmap)
+```
+
+```{r, results='asis'}
+t6 <- plm(log(totflow+1) ~ log(agg_gdp+1) + log(agg_pop+1) + joint_dem + lag(settle20), data=tradedv, index=c("dyad", "year"), model = "within", effect = "twoways")
+
+t7 <- plm(log(totflow+1) ~ lag(trans20) + log(agg_gdp+1) + log(agg_pop+1) + joint_dem, data=tradedv, index=c("dyad", "year"), model = "within", effect = "twoways")
+
+t8 <- plm(log(totflow+1) ~ lag(agree20) + log(agg_gdp+1) + log(agg_pop+1) + joint_dem, data=tradedv, index=c("dyad", "year"), model = "within", effect = "twoways")
+
+t9 <- plm(log(totflow+1) ~ lag(attanyp20) + log(agg_gdp+1) + log(agg_pop+1) + joint_dem, data=tradedv, index=c("dyad", "year"), model = "within", effect = "twoways")
+
+t10 <- plm(log(totflow+1) ~ lag(endicowclaim20) + log(agg_gdp+1) + log(agg_pop+1) + joint_dem, data=tradedv, index=c("dyad", "year"), model = "within", effect = "twoways")
+
+htmlreg(list(t6,t7,t8,t9,t10), doctype = F, caption = "Fixed Effects Models of Trade Flows", star.symbol = "\\*", stars = c(0.001, 0.01, 0.05, 0.1), symbol = "&#8224;", custom.coef.map=dvmap)
+```
+
+```{r, results='asis'}
+tradedv$year2 <- tradedv$year
+
+t11 <- plm(log(totflow+1) ~ log(agg_gdp+1) + log(agg_pop+1) + joint_dem + year2 + I(year2^2) + I(year2^3) + lag(settle5), data=tradedv, index=c("dyad", "year"), model = "within", effect = "individual")
+
+t12 <- plm(log(totflow+1) ~ lag(trans5) + log(agg_gdp+1) + log(agg_pop+1) + joint_dem + year2 + I(year2^2) + I(year2^3), data=tradedv, index=c("dyad", "year"), model = "within", effect = "individual")
+
+t13 <- plm(log(totflow+1) ~ lag(agree5) + log(agg_gdp+1) + log(agg_pop+1) + joint_dem + year2 + I(year2^2) + I(year2^3), data=tradedv, index=c("dyad", "year"), model = "within", effect = "individual")
+
+t14 <- plm(log(totflow+1) ~ lag(attanyp5) + log(agg_gdp+1) + log(agg_pop+1) + joint_dem + year2 + I(year2^2) + I(year2^3), data=tradedv, index=c("dyad", "year"), model = "within", effect = "individual")
+
+t15 <- plm(log(totflow+1) ~ lag(endicowclaim5) + log(agg_gdp+1) + log(agg_pop+1) + joint_dem + year2 + I(year2^2) + I(year2^3), data=tradedv, index=c("dyad", "year"), model = "within", effect = "individual")
+
+htmlreg(list(t11,t12,t13,t14,t15), doctype = F, caption = "Panel Models of Trade Flows with Splines", star.symbol = "\\*", stars = c(0.001, 0.01, 0.05, 0.1), symbol = "&#8224;", custom.coef.map=dvmap)
+```
+
+```{r, results='asis'}
+t16 <- plm(log(totflow+1) ~ log(agg_gdp+1) + log(agg_pop+1) + joint_dem + year2 + I(year2^2) + I(year2^3) + lag(settle20), data=tradedv, index=c("dyad", "year"), model = "within", effect = "individual")
+
+t17 <- plm(log(totflow+1) ~ lag(trans20) + log(agg_gdp+1) + log(agg_pop+1) + joint_dem + year2 + I(year2^2) + I(year2^3), data=tradedv, index=c("dyad", "year"), model = "within", effect = "individual")
+
+t18 <- plm(log(totflow+1) ~ lag(agree20) + log(agg_gdp+1) + log(agg_pop+1) + joint_dem + year2 + I(year2^2) + I(year2^3), data=tradedv, index=c("dyad", "year"), model = "within", effect = "individual")
+
+t19 <- plm(log(totflow+1) ~ lag(attanyp20) + log(agg_gdp+1) + log(agg_pop+1) + joint_dem + year2 + I(year2^2) + I(year2^3), data=tradedv, index=c("dyad", "year"), model = "within", effect = "individual")
+
+t20 <- plm(log(totflow+1) ~ lag(endicowclaim20) + log(agg_gdp+1) + log(agg_pop+1) + joint_dem + year2 + I(year2^2) + I(year2^3), data=tradedv, index=c("dyad", "year"), model = "within", effect = "individual")
+
+htmlreg(list(t16,t17,t18,t19,t20), doctype = F, caption = "Panel Models of Trade Flows with Splines", star.symbol = "\\*", stars = c(0.001, 0.01, 0.05, 0.1), symbol = "&#8224;", custom.coef.map=dvmap)
+```
+
+Unpack claim termination into peaceful and forceful ("resolved" variable in claimdy file)
+
+## Interactions
+
+```{r}
+library(sjPlot)
+
+tradedv$endicowclaim5 <- as.factor(tradedv$endicowclaim5)
+tradedv$settle5 <- as.factor(tradedv$settle5)
+
+t21 <- lm(log(totflow+1) ~ endicowclaim5*settle5 + joint_dem + as.factor(dyad) + as.factor(year), data=tradedv)
+
+plot_model(t21, type="int", title="Marginal Effects", axis.title = c("End of ICOW Claim within 5 Yrs", "logged Trade"), legend.title = "Border Settlement within 5 Yrs")
+```
+
+The effect of ICOW claim termination depends greatly on whether it is accompanied by comprehensive border settlement. In the absence of a border settlement, the termination of a claim reduces average trade flows by approximately \$80 million (based on 5 year windows). When accompanied by border settlement, claim termination produces a slight increase in trade of roughly \$9.8 million. The effect size for border settlement is larger when accompanied by ICOW claim termination. When co-occurring with ICOW claim terminatoin, settlement increases trade by approximately \$132 million annually, whereas the increase is only \$42 million when not accompanied by ICOW claim termination. It should be noted, however, that this difference is due almost entirely to the lower baseline in the ICOW termination condition. The absolute value of trade flows when border settlement occurs is nearly identical with or without ICOW claim termination.
+
+```{r}
+tradedv$endicowclaim20 <- as.factor(tradedv$endicowclaim20)
+tradedv$settle20 <- as.factor(tradedv$settle20)
+
+t22 <- lm(log(totflow+1) ~ endicowclaim20*settle20 + joint_dem + as.factor(dyad) + as.factor(year), data=tradedv)
+
+plot_model(t22, type="int", title="Marginal Effects", axis.title = c("End of ICOW Claim within 20 Yrs", "logged Trade"), legend.title = "Border Settlement within 20 Yrs")
+```
+
+The size of the interaction effect is more modest for the 20 year windows, but the direction of all relationships is the same.
+
+```{r}
+tradedv$agree5 <- as.factor(tradedv$agree5)
+
+t23 <- lm(log(totflow+1) ~ agree5*settle5 + joint_dem + as.factor(dyad) + as.factor(year), data=tradedv)
+
+plot_model(t23, type="int", title="Marginal Effects", axis.title = c("Legalized Transfer within 5 Yrs", "logged Trade"), legend.title = "Border Settlement within 5 Yrs")
+```
+
+The interaction of border settlement and legalized transfers is more pronounced, as transfers reduce the effect of border settlement, and settlements amplify the negative effect of transfers. When not accompanied by a legalized transfer, border settlement increases trade by an average of \$127 million (using 5 year windows), while the increase is just \$51 million. On the other side of the interaction, when not accompanied by comprehensive border settlement, legalized transfers reduce trade by an average of \$110 million per year. When combined with comprehensive border settlement, legalized transfers reduce trade by \$169 million. 
+
+```{r}
+tradedv$agree20 <- as.factor(tradedv$agree20)
+
+t24 <- lm(log(totflow+1) ~ agree20*settle20 + joint_dem + as.factor(dyad) + as.factor(year), data=tradedv)
+
+plot_model(t24, type="int", title="Marginal Effects", axis.title = c("Legalized Transfer within 20 Yrs", "logged Trade"), legend.title = "Border Settlement within 20 Yrs")
+```
+
+Again, the magnitude of the interaction effects is slightly smaller for the 20 year window, but the results are broadly similar.
+
+I suspect that these results reflect the disruption associated with the territorial transfer and/or the economic activity that occurs within the transferred territory itself (i.e. products from the territory in question might account for a substantial portion of pre-transfer exports). It should be possible to unpack these results a bit further and look at which side is most responsible for the decline in trade volumes (these results use total intra-dyad trade). If the activity in the territory itself is driving this, we should expect a decline in exports from the losing side to the gaining side, but not necessarily in exports from the gaining side to the losing side. We could also create subcategories of transfers based on the population or area of the territory.
 
 ## 2-Stage Models
 
@@ -198,3 +329,20 @@ As we discussed, a two-stage model makes sense theoretically, but given the stru
   - Requires instrument
 - Condensed Heckman
 - 
+
+## Interpretation
+
+To me, it seems like everything but the effect of legalized transfers on trade flows can be reconciled into a fairly coherent story. 
+
+1. Trade provides an incentive for peaceful management of any territorial disputes that exist, but does not provide an impetus for comprehensive border settlement in absence of claims or transfers to make territory salient.
+
+2. 
+
+Lingering puzzles:
+
+- If comprehensive settlement is needed for the settlement of smaller issues 
+
+## Next Steps
+
+- More analyses to try?
+- Unpack results further - does piecemeal settlement shake market confidence?s
