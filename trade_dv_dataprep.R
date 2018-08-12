@@ -408,6 +408,78 @@ tradedv$pta[is.na(tradedv$pta)] <- 0
 
 rm(pta)
 
+# MID data ----
+
+# Convert MIDB 4.2 to dyadic
+mids <- read_csv("datasets/MID-level/MIDB_4.2.csv", na = "-9")
+
+#expand to yearly observations (mid-participant-years)
+mids <- mids %>% 
+  rowwise() %>% 
+  do(data.frame(dispnum3=.$dispnum3, ccode=.$ccode, year=seq(.$styear, .$endyear), sidea=.$sidea, revtype1=.$revtype1, hiact=.$hiact, hostlev=.$hostlev, orig=.$orig, fatality=.$fatality))
+
+# check that it worked
+#midsum <- mids %>% group_by(dispnum3, year) %>% summarize(n=n(), a=sum(sidea==1), b=sum(sidea==0))
+
+#separate side A & B
+midsa <- filter(mids, sidea==1)
+midsb <- filter(mids, sidea==0)
+
+# merge by dispute no & year
+mids <- full_join(midsa, midsb, by=c("dispnum3", "year"), suffix=c("_a","_b"))
+
+rm(midsa, midsb)
+
+# remove a few years where the dates don't overlap
+mids <- filter(mids, !is.na(ccode_a))
+mids <- filter(mids, !is.na(ccode_b))
+
+mids$dyad <- as.numeric(ifelse(mids$ccode_a < mids$ccode_b, paste(mids$ccode_a, mids$ccode_b, sep=""), paste(mids$ccode_b, mids$ccode_a, sep="")))
+
+# many cases of multiple MIDs per year, so summarize
+mids <- mids %>% 
+  group_by(dyad, year) %>% 
+  summarize(tot_mids=n_distinct(dispnum3), terr_mids=sum(revtype1_a==1 | revtype1_b==1), fatal_mids=sum(fatality_a>0 | fatality_b>0))
+
+# merge into main data
+tradedv <- left_join(tradedv, mids)
+rm(mids)
+
+## create windows
+
+#get years of most recent mids
+tradedv$mid_year <- ifelse(!is.na(tradedv$tot_mids), tradedv$year, NA)
+tradedv$terr_mid_year <- ifelse(tradedv$terr_mids > 0, tradedv$year, NA)
+tradedv$fatal_mid_year <- ifelse(tradedv$fatal_mids > 0, tradedv$year, NA)
+
+#fill down
+tradedv <- tradedv %>% 
+  group_by(dyad) %>% 
+  fill(mid_year, terr_mid_year, fatal_mid_year)
+
+#create windows
+tradedv$mid5 <- ifelse(tradedv$year - tradedv$mid_year <= 5, 1, 0)
+tradedv$mid10 <- ifelse(tradedv$year - tradedv$mid_year <= 10, 1, 0)
+tradedv$mid20 <- ifelse(tradedv$year - tradedv$mid_year <= 20, 1, 0)
+tradedv$terr_mid5 <- ifelse(tradedv$year - tradedv$terr_mid_year <= 5, 1, 0)
+tradedv$terr_mid10 <- ifelse(tradedv$year - tradedv$terr_mid_year <= 10, 1, 0)
+tradedv$terr_mid20 <- ifelse(tradedv$year - tradedv$terr_mid_year <= 20, 1, 0)
+tradedv$fatal_mid5 <- ifelse(tradedv$year - tradedv$fatal_mid_year <= 5, 1, 0)
+tradedv$fatal_mid10 <- ifelse(tradedv$year - tradedv$fatal_mid_year <= 10, 1, 0)
+tradedv$fatal_mid20 <- ifelse(tradedv$year - tradedv$fatal_mid_year <= 20, 1, 0)
+
+#convert NAs to 0s
+tradedv$mid5[is.na(tradedv$mid5)] <- 0
+tradedv$mid10[is.na(tradedv$mid10)] <- 0
+tradedv$mid20[is.na(tradedv$mid20)] <- 0
+tradedv$terr_mid5[is.na(tradedv$terr_mid5)] <- 0
+tradedv$terr_mid10[is.na(tradedv$terr_mid10)] <- 0
+tradedv$terr_mid20[is.na(tradedv$terr_mid20)] <- 0
+tradedv$fatal_mid5[is.na(tradedv$fatal_mid5)] <- 0
+tradedv$fatal_mid10[is.na(tradedv$fatal_mid10)] <- 0
+tradedv$fatal_mid20[is.na(tradedv$fatal_mid20)] <- 0
+
+
 # Convert to factors -------
 
 tradedv$settle <- as.factor(tradedv$settle)
@@ -426,4 +498,12 @@ tradedv$endicowclaim20 <- as.factor(tradedv$endicowclaim20)
 tradedv$attanyp5 <- as.factor(tradedv$attanyp5)
 tradedv$attanyp10 <- as.factor(tradedv$attanyp10)
 tradedv$attanyp20 <- as.factor(tradedv$attanyp20)
-
+tradedv$mid5 <- as.factor(tradedv$mid5)
+tradedv$mid10 <- as.factor(tradedv$mid10)
+tradedv$mid20 <- as.factor(tradedv$mid20)
+tradedv$terr_mid5 <- as.factor(tradedv$terr_mid5)
+tradedv$terr_mid10 <- as.factor(tradedv$terr_mid10)
+tradedv$terr_mid20 <- as.factor(tradedv$terr_mid20)
+tradedv$fatal_mid5 <- as.factor(tradedv$fatal_mid5)
+tradedv$fatal_mid10 <- as.factor(tradedv$fatal_mid10)
+tradedv$fatal_mid20 <- as.factor(tradedv$fatal_mid20)
